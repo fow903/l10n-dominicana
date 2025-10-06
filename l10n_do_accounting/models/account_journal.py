@@ -34,7 +34,6 @@ class AccountJournal(models.Model):
         :param types_list: NCF list used to create fiscal sequences
         :return: types_list
         """
-
         ecf_types = ["e-%s" % d for d in types_list if d not in ("unique", "import")]
 
         if self._context.get("use_documents", False) or not invoice:
@@ -219,7 +218,7 @@ class AccountJournalDocumentType(models.Model):
     l10n_do_ncf_expiration_date = fields.Date(
         string="Expiration date",
         required=True,
-        default=fields.Date.end_of(
+        default=lambda self: fields.Date.end_of(
             fields.Date.today().replace(month=12, year=fields.Date.today().year + 1),
             "year",
         ),

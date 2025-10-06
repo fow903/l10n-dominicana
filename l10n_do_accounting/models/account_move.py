@@ -4,7 +4,7 @@ from werkzeug import urls
 from odoo import models, fields, api, _
 from odoo.osv import expression
 from odoo.exceptions import ValidationError, UserError, AccessError
-from odoo.tools.sql import column_exists, create_column, drop_index, index_exists
+from odoo.tools.sql import column_exists, create_column
 
 
 class AccountMove(models.Model):
@@ -143,50 +143,57 @@ class AccountMove(models.Model):
     ]
 
     def _auto_init(self):
-        if not index_exists(
-            self.env.cr, "account_move_unique_l10n_do_fiscal_number_sales"
-        ):
-            drop_index(
-                self.env.cr,
-                "account_move_unique_l10n_do_fiscal_number_purchase_manual",
-                self._table,
+        # Check if indexes don't exist before creating them
+        # This prevents duplicate index errors on module upgrade
+        self.env.cr.execute("""
+            SELECT indexname FROM pg_indexes 
+            WHERE tablename = 'account_move' 
+            AND indexname IN (
+                'account_move_unique_l10n_do_fiscal_number_sales',
+                'account_move_unique_l10n_do_fiscal_number_purchase_manual',
+                'account_move_unique_l10n_do_fiscal_number_purchase_internal'
             )
-            drop_index(
-                self.env.cr,
-                "account_move_unique_l10n_do_fiscal_number_purchase_internal",
-                self._table,
+        """)
+        existing_indexes = [row[0] for row in self.env.cr.fetchall()]
+
+        # Create columns if they don't exist
+        if not column_exists(self.env.cr, "account_move", "l10n_do_fiscal_number"):
+            create_column(
+                self.env.cr, "account_move", "l10n_do_fiscal_number", "varchar"
+            )
+        if not column_exists(self.env.cr, "account_move", "l10n_latam_manual_document_number"):
+            create_column(
+                self.env.cr, "account_move", "l10n_latam_manual_document_number", "boolean"
             )
 
-            if not column_exists(self.env.cr, "account_move", "l10n_do_fiscal_number"):
-                create_column(
-                    self.env.cr, "account_move", "l10n_do_fiscal_number", "varchar"
-                )
-            if not column_exists(self.env.cr, "account_move", "l10n_latam_manual_document_number"):
-                create_column(
-                    self.env.cr, "account_move", "l10n_latam_manual_document_number", "varchar"
-                )
-
-            self.env.cr.execute(
-                """
+        # Create indexes only if they don't exist
+        if "account_move_unique_l10n_do_fiscal_number_sales" not in existing_indexes:
+            self.env.cr.execute("""
                 CREATE UNIQUE INDEX account_move_unique_l10n_do_fiscal_number_sales
                 ON account_move(l10n_do_fiscal_number, company_id)
                 WHERE (l10n_latam_document_type_id IS NOT NULL
                 AND move_type NOT IN ('in_invoice', 'in_refund'))
-                AND l10n_do_fiscal_number <> '';
-                
+                AND l10n_do_fiscal_number <> ''
+            """)
+        
+        if "account_move_unique_l10n_do_fiscal_number_purchase_manual" not in existing_indexes:
+            self.env.cr.execute("""
                 CREATE UNIQUE INDEX account_move_unique_l10n_do_fiscal_number_purchase_manual
                 ON account_move(l10n_do_fiscal_number, commercial_partner_id, company_id)
                 WHERE (l10n_latam_document_type_id IS NOT NULL AND move_type IN ('in_invoice', 'in_refund')
                 AND l10n_latam_manual_document_number = 't')
-                AND l10n_do_fiscal_number <> '';
-                
+                AND l10n_do_fiscal_number <> ''
+            """)
+        
+        if "account_move_unique_l10n_do_fiscal_number_purchase_internal" not in existing_indexes:
+            self.env.cr.execute("""
                 CREATE UNIQUE INDEX account_move_unique_l10n_do_fiscal_number_purchase_internal
                 ON account_move(l10n_do_fiscal_number, company_id)
                 WHERE (l10n_latam_document_type_id IS NOT NULL AND move_type IN ('in_invoice', 'in_refund', 'in_receipt')
                 AND l10n_latam_manual_document_number = 'f')
-                AND l10n_do_fiscal_number <> '';
-            """
-            )
+                AND l10n_do_fiscal_number <> ''
+            """)
+
         return super()._auto_init()
 
     @api.model
@@ -314,7 +321,7 @@ class AccountMove(models.Model):
         ).filtered(lambda i: not i.l10n_latam_manual_document_number)
 
         # first set all invoices l10n_do_company_in_contingency = False
-        self.write({"l10n_do_company_in_contingency": False})
+        self.l10n_do_company_in_contingency = False
 
         # then get draft invoices and do the thing
         for invoice in self.filtered(lambda inv: inv.state == "draft"):
@@ -338,7 +345,7 @@ class AccountMove(models.Model):
                 ecf_service_env = "TesteCF"
 
             doc_code_prefix = invoice.l10n_latam_document_type_id.doc_code_prefix
-            is_rfc = (  # Es un Resumen Factura Consumo
+            is_rfc = (
                 doc_code_prefix == "E32" and invoice.amount_total_signed < 250000
             )
 
@@ -647,14 +654,14 @@ class AccountMove(models.Model):
         if self.move_type == "out_invoice":
             return (
                 self.company_id.account_sale_tax_id
-                or self.env.ref("account.%s_tax_18_sale" % self.company_id.id)
+                or self.env.ref("account.%s_tax_18_sale" % self.company_id.id, raise_if_not_found=False)
                 if (debit_date - self.invoice_date).days <= 30
                 and self.partner_id.l10n_do_dgii_tax_payer_type != "special"
-                else self.env.ref("account.%s_tax_0_sale" % self.company_id.id) or False
+                else self.env.ref("account.%s_tax_0_sale" % self.company_id.id, raise_if_not_found=False) or False
             )
         else:
             return self.company_id.account_purchase_tax_id or self.env.ref(
-                "account.%s_tax_0_purch" % self.company_id.id
+                "account.%s_tax_0_purch" % self.company_id.id, raise_if_not_found=False
             )
 
     def _post(self, soft=True):
@@ -854,8 +861,6 @@ class AccountMove(models.Model):
             return "l10n_do_accounting.report_invoice_document_inherited"
         return super()._get_name_invoice_report()
 
-    # TODO: handle l10n_latam_invoice_document _compute_name() inheritance shit
-
     def unlink(self):
         if self.filtered(
             lambda inv: inv.is_purchase_document()
@@ -868,8 +873,6 @@ class AccountMove(models.Model):
             )
         return super(AccountMove, self).unlink()
 
-    # Extension of the _deduce_sequence_number_reset function to compute the `name` field according to the invoice
-    # date and prevent the `l10n_latam_document_number` field from being reset
     @api.model
     def _deduce_sequence_number_reset(self, name):
         if (
