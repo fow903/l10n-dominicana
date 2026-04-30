@@ -829,6 +829,8 @@ class AccountMove(models.Model):
         self.ensure_one()
 
         if not self._context.get("is_l10n_do_seq", False):
+            if not isinstance(self.id, int):
+                return
             return super(AccountMove, self)._set_next_sequence()
 
         last_sequence = self._get_last_sequence()
@@ -863,7 +865,7 @@ class AccountMove(models.Model):
 
     def unlink(self):
         if self.filtered(
-            lambda inv: inv.is_purchase_document()
+            lambda inv: inv.is_invoice()
             and inv.country_code == "DO"
             and inv.l10n_latam_use_documents
             and inv.posted_before
