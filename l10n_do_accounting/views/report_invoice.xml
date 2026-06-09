@@ -34,7 +34,7 @@
     </template>
 
     <template id="informations">
-        <div id="informations" class="row" style="margin-top: 0px; font-size: 12px">
+        <div id="informations" class="row mb-0" style="margin-top: 0px; font-size: 14px">
             <div class="col-6">
                 <div>
                     <strong t-field="o.company_id.partner_id.name"/>
@@ -53,7 +53,6 @@
                     <span t-field="o.invoice_date_due"/>
                 </div>
             </div>
-
             <div class="col-6">
                 <h4 class="mb-0">
                     <span t-field="o.l10n_latam_document_type_id.report_name"/>
@@ -88,7 +87,7 @@
                 </div>
             </div>
         </div>
-        <div id="receiver_info" class="row p-1" style="font-size: 12px">
+        <div id="receiver_info" class="row pt-1 pb-1 px-1 my-0" style="font-size: 14px; margin-top: 0; margin-bottom: 0; padding-top: 0; padding-bottom: 0;">
             <t t-set="vat_len" t-value="len(o.commercial_partner_id.vat) if o.commercial_partner_id.vat else 0"/>
             <div class="col-7 mw-100">
                 <div>
@@ -156,7 +155,7 @@
     </template>
 
     <template id="document_tax_totals">
-        <div style="font-size: 12px !important;">
+        <div style="font-size: 14px !important;">
 
             <t t-set="l10n_do_amounts" t-value="o._get_l10n_do_amounts()"/>
 
@@ -197,7 +196,7 @@
                 </td>
             </tr>
 
-            <!-- Total -->
+            <!-- Total = subtotal + impuestos - retenciones -->
             <tr class="border-black o_total">
                 <td>
                     <strong>Total</strong>
@@ -249,9 +248,6 @@
             <t t-set="address" t-value="False"/>
         </xpath>
 
-        <xpath expr="//h2" position="replace">
-        </xpath>
-        
         <!-- Reemplazar la sección de información -->
         <xpath expr="//div[@id='informations']" position="replace">
             <t t-call="l10n_do_accounting.informations"/>
