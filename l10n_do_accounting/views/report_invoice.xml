@@ -105,17 +105,10 @@
                     </strong>
                     <t t-if="o.partner_id.is_company or not o.partner_id.parent_id">
                         <span class="m-0" t-field="o.partner_id.name"/>
-                        <div class="d-inline" t-if="o.partner_id.phone or o.partner_id.mobile">
+                        <div class="d-inline" t-if="o.partner_id.phone">
                             <t t-if="o.partner_id.phone">
                                 <strong>Tel.:</strong>
                                 <span t-field="o.partner_id.phone"/>
-                                <t t-if="o.partner_id.mobile">
-                                    <span>/</span>
-                                </t>
-                            </t>
-                            <t t-if="o.partner_id.mobile">
-                                <strong>Cel.:</strong>
-                                <span t-field="o.partner_id.mobile" widget="phone"/>
                             </t>
                         </div>
                     </t>
@@ -126,17 +119,10 @@
                             <strong>Contacto:</strong>
                             <span t-field="o.partner_id.name"/>
                         </div>
-                        <div class="d-inline" t-if="commercial_partner_id.phone or commercial_partner_id.mobile">
+                        <div class="d-inline" t-if="commercial_partner_id.phone">
                             <t t-if="commercial_partner_id.phone">
                                 <strong>Tel.:</strong>
                                 <span t-field="commercial_partner_id.phone"/>
-                                <t t-if="commercial_partner_id.mobile">
-                                    <span>/</span>
-                                </t>
-                            </t>
-                            <t t-if="commercial_partner_id.mobile">
-                                <strong>Cel.:</strong>
-                                <span t-field="commercial_partner_id.mobile" widget="phone"/>
                             </t>
                         </div>
                     </t>
