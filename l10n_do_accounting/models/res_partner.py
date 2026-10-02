@@ -1,5 +1,5 @@
 from odoo import models, fields, api, _
-from odoo.exceptions import AccessError
+from odoo.exceptions import AccessError, ValidationError
 
 # Xml id, without company prefix, of the "Regimenes Especiales" fiscal position
 # created by the Dominican chart of accounts on every company.
@@ -133,8 +133,69 @@ class Partner(models.Model):
         if fiscal_position:
             partners.property_account_position_id = fiscal_position
 
+    @api.model
+    def _l10n_do_sanitize_vat(self, vat: str, country_id: int | bool = False) -> str:
+        """Strip every non digit character from a Dominican RNC or Cedula.
+
+        Args:
+            vat: VAT number as typed by the user.
+            country_id: id of the country the VAT belongs to. VAT numbers of
+                any other country are returned untouched.
+
+        Returns:
+            str: digits only VAT for Dominican contacts, unchanged value
+                otherwise. Leading/trailing spaces, dots and dashes are
+                dropped along with any other non digit character.
+        """
+        if country_id != self.env.ref("base.do").id:
+            return vat
+
+        return "".join(char for char in vat if char.isdigit())
+
+    @api.onchange("vat", "country_id")
+    def _onchange_l10n_do_vat(self):
+        """Clean up the VAT on the form so the user sees the stored value."""
+        if self.vat:
+            self.vat = self._l10n_do_sanitize_vat(self.vat, self.country_id.id)
+
+    @api.constrains("vat", "country_id")
+    def _check_l10n_do_vat(self):
+        """Dominican VAT must be a 9 digit RNC or an 11 digit Cedula."""
+        for partner in self:
+            if partner.country_code != "DO" or not partner.vat:
+                continue
+
+            if not partner.vat.isdigit() or len(partner.vat) not in (9, 11):
+                raise ValidationError(
+                    _(
+                        "%(vat)s is not a valid RNC/Cédula for %(partner)s. "
+                        "It must contain digits only: 9 for a RNC or 11 for "
+                        "a Cédula.",
+                        vat=partner.vat,
+                        partner=partner.display_name,
+                    )
+                )
+
     @api.model_create_multi
     def create(self, vals_list):
+        default_country_id = None
+        for vals in vals_list:
+            if not vals.get("vat"):
+                continue
+
+            if "country_id" in vals:
+                country_id = vals["country_id"]
+            else:
+                # Dominican companies default this field, so it must be
+                # resolved to know whether the VAT has to be sanitized.
+                if default_country_id is None:
+                    default_country_id = self.default_get(["country_id"]).get(
+                        "country_id", False
+                    )
+                country_id = default_country_id
+
+            vals["vat"] = self._l10n_do_sanitize_vat(vals["vat"], country_id)
+
         partners = super(Partner, self).create(vals_list)
         partners.browse(
             [
@@ -147,6 +208,11 @@ class Partner(models.Model):
         return partners
 
     def write(self, vals):
+        countries = self.mapped("country_id")
+        if vals.get("vat") and len(countries) == 1:
+            country_id = vals["country_id"] if "country_id" in vals else countries.id
+            vals = dict(vals, vat=self._l10n_do_sanitize_vat(vals["vat"], country_id))
+
         res = super(Partner, self).write(vals)
         self._check_l10n_do_fiscal_fields(vals)
         if "property_account_position_id" not in vals:
